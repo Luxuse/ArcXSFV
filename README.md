@@ -20,7 +20,7 @@ Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une int
 - Accumulateurs doubles
 - Multiplications **128 bits**
 - Chemin critique optimisé (*branchless*)
-- Débit mesuré : **~18.52 GB/s** (ReleaseFast)
+- Débit mesuré : **~32 GB/s** (ReleaseFast)
 
 ### Interface – C++ / Win32
 
