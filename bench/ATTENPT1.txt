@@ -1,0 +1,3 @@
+- Hash: 0x24678efd644b35fb
+- Avg Time: 26.9968 ms
+- Avg Speed: 18.52 GB/s
