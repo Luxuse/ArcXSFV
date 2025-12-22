@@ -31,9 +31,4 @@ Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une int
   - Rouge : corrompu
   - Bleu : en cours
 
-## Build
 
-### Compilation du moteur (Zig)
-
-```bash
-zig build-lib arcahash.zig -O ReleaseFast
