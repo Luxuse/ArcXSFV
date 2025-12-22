@@ -12,4 +12,5 @@ Le logiciel ArcXSFV (incluant son code source, ses binaires et sa documentation)
 
 4. Crédits et Attribution Si vous redistribuez le code ou intégrez ArcXSFV dans un autre projet, vous devez obligatoirement créditer l'auteur original et inclure un lien vers le dépôt officiel ou mentionner clairement le nom "ArcXSFV".
 
+
 5. Clause de Non-Responsabilité ArcXSFV est fourni "tel quel", sans aucune garantie de performance ou de fiabilité. L'auteur ne pourra être tenu responsable de toute perte de données ou dommage résultant de l'utilisation de ce logiciel.
