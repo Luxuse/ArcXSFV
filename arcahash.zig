@@ -23,39 +23,42 @@ pub const ArcaHash = struct {
     }
 
     pub fn update(self: *ArcaHash, input: []const u8) void {
-        @setRuntimeSafety(false); // Crucial pour le benchmark
+        @setRuntimeSafety(false);
+        
         var len = input.len;
         var ptr = input.ptr;
-        var h1 = self.state ^ @as(u64, @truncate(len));
-        var h2 = self.seed ^ P2; // Deuxième accumulateur parallèle
+        var h1 = self.state;
+        var h2 = self.seed;
 
-        // --- Ultra Fast Path: 32-byte blocks ---
-        // On traite 4x8 octets en même temps pour casser les dépendances
+        // Process 32-byte blocks with 2 parallel accumulators
         while (len >= 32) : ({
             ptr += 32;
             len -= 32;
         }) {
+            // Load all 4 values first
             const v1 = mem.readInt(u64, ptr[0..8], .little);
             const v2 = mem.readInt(u64, ptr[8..16], .little);
             const v3 = mem.readInt(u64, ptr[16..24], .little);
             const v4 = mem.readInt(u64, ptr[24..32], .little);
 
-            h1 = mix(v1 ^ P1, v2 ^ h1);
-            h2 = mix(v3 ^ P2, v4 ^ h2);
+            // Mix in parallel - no dependencies between these two
+            h1 ^= mix(v1, v2);
+            h2 ^= mix(v3, v4);
         }
 
-        // On fusionne les deux accumulateurs
-        var h = h1 ^ h2;
+        // Merge the two accumulators
+        var h = mix(h1, h2);
 
-        // --- Mid Path: 8-byte blocks ---
+        // Process 8-byte blocks
         while (len >= 8) : ({
             ptr += 8;
             len -= 8;
         }) {
-            h = mix(mem.readInt(u64, ptr[0..8], .little) ^ P1, h ^ P2);
+            const v = mem.readInt(u64, ptr[0..8], .little);
+            h ^= mix(v, P1);
         }
 
-        // --- Tail Path: 1-7 bytes ---
+        // Tail
         if (len > 0) {
             var tail: u64 = 0;
             if (len >= 4) {
@@ -67,27 +70,48 @@ pub const ArcaHash = struct {
                 tail |= (@as(u64, ptr[len / 2]) << 8);
                 tail |= (@as(u64, ptr[len - 1]) << 16);
             }
-            h = mix(tail ^ P1, h ^ P3);
+            h ^= mix(tail, P3);
         }
 
         self.state = h;
     }
 
     pub fn finalize(self: *ArcaHash) u64 {
-        return mix(self.state, self.state ^ P1);
+        var h = self.state;
+        h ^= h >> 33;
+        h = mix(h, P2);
+        h ^= h >> 29;
+        return h;
+    }
+
+    pub fn hash(input: []const u8, seed: u64) u64 {
+        var hasher = init(seed);
+        hasher.update(input);
+        return hasher.finalize();
     }
 };
 
-// Interface pour le C++ (C-ABI)
+// C ABI exports
 export fn arca_init(ctx: *ArcaHash, seed: u64) void {
     ctx.* = ArcaHash.init(seed);
 }
 
-export fn arca_update(ctx: *ArcaHash, input: [*]const u8, len: usize) void {
-    // Transforme le pointeur C et la longueur en "slice" Zig
-    ctx.update(input[0..len]);
+
+
+export fn arca_create(out: *ArcaHash, seed: u64) void {
+    out.* = ArcaHash.init(seed);
 }
 
-export fn arca_finalize(ctx: *ArcaHash) u64 {
-    return ctx.finalize();
+export fn arca_update(state: *ArcaHash, data: [*]const u8, len: usize) void {
+    state.update(data[0..len]);
 }
+
+export fn arca_finalize(state: *const ArcaHash) u64 {
+    var h = state.*;
+    return h.finalize();
+}
+
+export fn arca_oneshot(data: [*]const u8, len: usize, seed: u64) u64 {
+    return ArcaHash.hash(data[0..len], seed);
+}
+

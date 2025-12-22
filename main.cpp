@@ -346,7 +346,7 @@ int WINAPI WinMain(HINSTANCE h, HINSTANCE, LPSTR, int n) {
     WNDCLASSEX wc{ sizeof(wc) }; wc.lpfnWndProc = WndProc; wc.hInstance = h; wc.lpszClassName = L"ArcSFV";
     wc.hCursor = LoadCursor(NULL, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     RegisterClassEx(&wc);
-    g_hwndMain = CreateWindow(L"ArcSFV", L"ArcXSFV V0.2.2", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 600, 480, 0, 0, h, 0);
+    g_hwndMain = CreateWindow(L"ArcSFV", L"ArcXSFV V1.0", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 600, 480, 0, 0, h, 0);
     ShowWindow(g_hwndMain, n);
     MSG m; while (GetMessage(&m, 0, 0, 0)) { TranslateMessage(&m); DispatchMessage(&m); }
     return 0;
