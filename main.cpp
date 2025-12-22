@@ -13,6 +13,7 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <queue>
 
 #include "arcahash.h" 
 
@@ -32,6 +33,7 @@ namespace fs = std::filesystem;
 #define WM_START    (WM_APP + 3)
 #define WM_PROGRESS (WM_APP + 4)
 #define WM_DONE     (WM_APP + 5)
+#define WM_BATCH_LOG (WM_APP + 6)
 
 /* ===================== GLOBALS ===================== */
 HWND g_hwndMain, g_hwndProgress, g_hwndStatus, g_hwndList;
@@ -49,18 +51,85 @@ struct LogMsg {
     wchar_t status[64]; 
 };
 
+// Batching mechanism for UI updates
+mutex g_batchMutex;
+vector<LogMsg*> g_batchQueue;
+UINT_PTR g_batchTimer = 0;
+
 /* ===================== UI HELPERS ===================== */
 void UpdateListSafe(int idx, const wstring& status, COLORREF col) {
     LogMsg* m = new LogMsg();
     m->idx = idx;
     m->col = col;
     wcsncpy_s(m->status, status.c_str(), _TRUNCATE);
-    PostMessage(g_hwndMain, WM_LOG, 1, (LPARAM)m);
+    
+    // Add to batch queue instead of immediate update
+    {
+        lock_guard<mutex> lock(g_batchMutex);
+        g_batchQueue.push_back(m);
+    }
+}
+
+void AddListItemSafe(const wstring& text, const wstring& status) {
+    LogMsg* m = new LogMsg();
+    m->idx = -1; 
+    m->col = RGB(0, 0, 0);
+    wcsncpy_s(m->text, text.c_str(), _TRUNCATE);
+    wcsncpy_s(m->status, status.c_str(), _TRUNCATE);
+    
+    // Add to batch queue
+    {
+        lock_guard<mutex> lock(g_batchMutex);
+        g_batchQueue.push_back(m);
+    }
 }
 
 void SetStatusSafe(const wstring& s) {
     wchar_t* b = _wcsdup(s.c_str());
     PostMessage(g_hwndMain, WM_STAT, 0, (LPARAM)b);
+}
+
+void ProcessBatchUpdates() {
+    vector<LogMsg*> batch;
+    {
+        lock_guard<mutex> lock(g_batchMutex);
+        if (g_batchQueue.empty()) return;
+        batch.swap(g_batchQueue);
+    }
+    
+    // Disable redraw during batch update
+    SendMessage(g_hwndList, WM_SETREDRAW, FALSE, 0);
+    
+    for (auto* m : batch) {
+        if (m->idx == -1) {
+            // Add new item
+            LVITEM lv{ LVIF_TEXT | LVIF_PARAM };
+            lv.iItem = ListView_GetItemCount(g_hwndList);
+            lv.pszText = m->text; 
+            lv.lParam = (LPARAM)m->col;
+            int pos = ListView_InsertItem(g_hwndList, &lv);
+            ListView_SetItemText(g_hwndList, pos, 1, m->status);
+        } else {
+            // Update existing item
+            LVITEM lv{ LVIF_PARAM };
+            lv.iItem = m->idx; 
+            lv.lParam = (LPARAM)m->col;
+            ListView_SetItem(g_hwndList, &lv);
+            ListView_SetItemText(g_hwndList, m->idx, 1, m->status);
+        }
+        delete m;
+    }
+    
+    // Re-enable redraw and update
+    SendMessage(g_hwndList, WM_SETREDRAW, TRUE, 0);
+    
+    // Only scroll to last updated item, not every item
+    int count = ListView_GetItemCount(g_hwndList);
+    if (count > 0) {
+        ListView_EnsureVisible(g_hwndList, count - 1, FALSE);
+    }
+    
+    InvalidateRect(g_hwndList, NULL, TRUE);
 }
 
 /* ===================== CORE HASH LOGIC ===================== */
@@ -193,13 +262,9 @@ void LogicManager(vector<wstring> inputs, bool verifyMode) {
         }
     }
 
+    // Add all items to list in batches
     for (auto& j : jobList) {
-        LogMsg* m = new LogMsg();
-        m->idx = -1; 
-        m->col = RGB(0, 0, 0);
-        wcsncpy_s(m->text, j.relPath.c_str(), _TRUNCATE);
-        wcsncpy_s(m->status, L"Queued", _TRUNCATE);
-        SendMessage(g_hwndMain, WM_LOG, 0, (LPARAM)m);
+        AddListItemSafe(j.relPath, L"Queued");
     }
 
     atomic<size_t> nextJob(0);
@@ -218,10 +283,17 @@ void LogicManager(vector<wstring> inputs, bool verifyMode) {
         
         SetStatusSafe(to_wstring(pct) + L"% | " + to_wstring((int)mbps) + L" MB/s");
         PostMessage(g_hwndMain, WM_PROGRESS, pct, 0);
+        
+        // Trigger batch processing
+        PostMessage(g_hwndMain, WM_BATCH_LOG, 0, 0);
+        
         this_thread::sleep_for(chrono::milliseconds(150));
     }
 
     for (auto& t : workers) if (t.joinable()) t.join();
+
+    // Final batch update
+    PostMessage(g_hwndMain, WM_BATCH_LOG, 0, 0);
 
     if (!verifyMode && !g_stopRequested) {
         ofstream o("Hash.arca", ios::binary);
@@ -270,27 +342,9 @@ LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         break;
     }
 
-    case WM_LOG: {
-        LogMsg* m = (LogMsg*)l;
-        if (m->idx == -1) {
-            LVITEM lv{ LVIF_TEXT | LVIF_PARAM };
-            lv.iItem = ListView_GetItemCount(g_hwndList);
-            lv.pszText = m->text; lv.lParam = (LPARAM)m->col;
-            int pos = ListView_InsertItem(g_hwndList, &lv);
-            ListView_SetItemText(g_hwndList, pos, 1, m->status);
-        } else {
-            LVITEM lv{ LVIF_PARAM };
-            lv.iItem = m->idx; lv.lParam = (LPARAM)m->col;
-            ListView_SetItem(g_hwndList, &lv);
-            ListView_SetItemText(g_hwndList, m->idx, 1, m->status);
-            // AUTO SCROLL FEATURE
-            ListView_EnsureVisible(g_hwndList, m->idx, FALSE);
-            RECT r; ListView_GetItemRect(g_hwndList, m->idx, &r, LVIR_BOUNDS);
-            InvalidateRect(g_hwndList, &r, FALSE);
-        }
-        delete m;
+    case WM_BATCH_LOG:
+        ProcessBatchUpdates();
         break;
-    }
 
     case WM_DRAWITEM: {
         LPDRAWITEMSTRUCT d = (LPDRAWITEMSTRUCT)l;
@@ -328,26 +382,59 @@ LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
 
     case WM_START: 
-        EnableWindow(g_hwndCreate, 0); EnableWindow(g_hwndVerify, 0); EnableWindow(g_hwndStop, 1);
-        ListView_DeleteAllItems(g_hwndList); break;
+        EnableWindow(g_hwndCreate, 0); 
+        EnableWindow(g_hwndVerify, 0); 
+        EnableWindow(g_hwndStop, 1);
+        ListView_DeleteAllItems(g_hwndList); 
+        break;
+        
     case WM_DONE: 
-        EnableWindow(g_hwndCreate, 1); EnableWindow(g_hwndVerify, 1); EnableWindow(g_hwndStop, 0); break;
-    case WM_STAT: { wchar_t* s = (wchar_t*)l; SetWindowText(g_hwndStatus, s); free(s); break; }
-    case WM_PROGRESS: SendMessage(g_hwndProgress, PBM_SETPOS, w, 0); break;
-    case WM_COMMAND: if (LOWORD(w) == 3) g_stopRequested = true; break;
-    case WM_DESTROY: PostQuitMessage(0); break;
-    default: return DefWindowProc(h, m, w, l);
+        EnableWindow(g_hwndCreate, 1); 
+        EnableWindow(g_hwndVerify, 1); 
+        EnableWindow(g_hwndStop, 0);
+        ProcessBatchUpdates(); // Final update
+        break;
+        
+    case WM_STAT: { 
+        wchar_t* s = (wchar_t*)l; 
+        SetWindowText(g_hwndStatus, s); 
+        free(s); 
+        break; 
+    }
+    
+    case WM_PROGRESS: 
+        SendMessage(g_hwndProgress, PBM_SETPOS, w, 0); 
+        break;
+        
+    case WM_COMMAND: 
+        if (LOWORD(w) == 3) g_stopRequested = true; 
+        break;
+        
+    case WM_DESTROY: 
+        PostQuitMessage(0); 
+        break;
+        
+    default: 
+        return DefWindowProc(h, m, w, l);
     }
     return 0;
 }
 
 int WINAPI WinMain(HINSTANCE h, HINSTANCE, LPSTR, int n) {
     InitCommonControls();
-    WNDCLASSEX wc{ sizeof(wc) }; wc.lpfnWndProc = WndProc; wc.hInstance = h; wc.lpszClassName = L"ArcSFV";
-    wc.hCursor = LoadCursor(NULL, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    WNDCLASSEX wc{ sizeof(wc) }; 
+    wc.lpfnWndProc = WndProc; 
+    wc.hInstance = h; 
+    wc.lpszClassName = L"ArcSFV";
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW); 
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     RegisterClassEx(&wc);
     g_hwndMain = CreateWindow(L"ArcSFV", L"ArcXSFV V1.0", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 600, 480, 0, 0, h, 0);
     ShowWindow(g_hwndMain, n);
-    MSG m; while (GetMessage(&m, 0, 0, 0)) { TranslateMessage(&m); DispatchMessage(&m); }
+    MSG m; 
+    while (GetMessage(&m, 0, 0, 0)) { 
+        TranslateMessage(&m); 
+        DispatchMessage(&m); 
+    }
     return 0;
 }
