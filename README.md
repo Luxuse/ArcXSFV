@@ -1,6 +1,6 @@
-# ArcaXSFV
+# ArcXSFV
 
-**ArcaXSFV** est un outil industriel de vérification d’intégrité de fichiers.  
+**ArcXSFV** est un outil industriel de vérification d’intégrité de fichiers.  
 Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une interface multithreadée native (**C++ Win32**).
 
 ## Caractéristiques
