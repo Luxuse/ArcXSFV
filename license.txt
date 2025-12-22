@@ -1,0 +1,15 @@
+ArcXSFV SOFTWARE LICENSE (Version 1.0)
+
+Copyright (c) 2025 Luxuse
+
+Le logiciel ArcXSFV (incluant son code source, ses binaires et sa documentation) est fourni gratuitement sous les conditions suivantes :
+
+1. Droits d'Utilisation et de Modification Vous êtes autorisé à utiliser ArcXSFV, à le modifier pour vos besoins personnels ou à l'intégrer dans vos propres projets (bibliothèques, outils internes, etc.).
+
+2. Usage Commercial et "Business" L'utilisation de ArcXSFV au sein d'une entreprise ou pour des besoins professionnels est entièrement autorisée et gratuite. Vous pouvez l'utiliser pour valider vos données, vos déploiements ou vos archives en interne sans aucune redevance.
+
+3. Restriction de Vente (Produit Seul) Il est strictement interdit de vendre ou de monétiser ArcXSFV en tant que produit autonome. Vous ne pouvez pas vendre l'exécutable, le code source original ou une version légèrement modifiée dont la fonction principale reste la vérification de fichiers via le moteur ArcX.
+
+4. Crédits et Attribution Si vous redistribuez le code ou intégrez ArcXSFV dans un autre projet, vous devez obligatoirement créditer l'auteur original et inclure un lien vers le dépôt officiel ou mentionner clairement le nom "ArcXSFV".
+
+5. Clause de Non-Responsabilité ArcXSFV est fourni "tel quel", sans aucune garantie de performance ou de fiabilité. L'auteur ne pourra être tenu responsable de toute perte de données ou dommage résultant de l'utilisation de ce logiciel.
