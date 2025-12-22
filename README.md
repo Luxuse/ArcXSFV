@@ -25,7 +25,6 @@ Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une int
 ### Interface – C++ / Win32
 
 - Drag & Drop fichiers / dossiers
-- Suivi temps réel (auto-scroll)
 - Indication d’état :
   - Vert : valide
   - Rouge : corrompu
