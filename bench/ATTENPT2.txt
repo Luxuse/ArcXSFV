@@ -1,0 +1,25 @@
+ Benchmark Suite
+Testing 128.0 MB
+ Hash:       0xa5eb6c0bbf2f56d2
+ Iterations: 10
+
+ Avg Time:   3.965 ms
+ Min Time:   3.863 ms
+ Max Time:   4.194 ms
+
+ Avg Speed:  31.53 GB/s
+Peak Speed: 32.36 GB/s
+B/cycle:    7.52 @ 4.5GHz
+
+
+Testing 512.0 MB
+ Hash:       0xc9a5cb2b9e28a9f3
+ Iterations: 10
+
+ Avg Time:   16.561 ms
+ Min Time:   15.479 ms
+ Max Time:   18.213 ms
+
+ Avg Speed:  30.19 GB/s
+Peak Speed: 32.30 GB/s
+B/cycle:    7.20 @ 4.5GHz
