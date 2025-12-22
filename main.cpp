@@ -13,7 +13,9 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
-#include <queue>
+#include <sstream>
+#include <iomanip>
+#include <cstdio>
 
 #include "arcahash.h" 
 
@@ -54,7 +56,6 @@ struct LogMsg {
 // Batching mechanism for UI updates
 mutex g_batchMutex;
 vector<LogMsg*> g_batchQueue;
-UINT_PTR g_batchTimer = 0;
 
 /* ===================== UI HELPERS ===================== */
 void UpdateListSafe(int idx, const wstring& status, COLORREF col) {
@@ -63,7 +64,6 @@ void UpdateListSafe(int idx, const wstring& status, COLORREF col) {
     m->col = col;
     wcsncpy_s(m->status, status.c_str(), _TRUNCATE);
     
-    // Add to batch queue instead of immediate update
     {
         lock_guard<mutex> lock(g_batchMutex);
         g_batchQueue.push_back(m);
@@ -77,7 +77,6 @@ void AddListItemSafe(const wstring& text, const wstring& status) {
     wcsncpy_s(m->text, text.c_str(), _TRUNCATE);
     wcsncpy_s(m->status, status.c_str(), _TRUNCATE);
     
-    // Add to batch queue
     {
         lock_guard<mutex> lock(g_batchMutex);
         g_batchQueue.push_back(m);
@@ -97,12 +96,10 @@ void ProcessBatchUpdates() {
         batch.swap(g_batchQueue);
     }
     
-    // Disable redraw during batch update
     SendMessage(g_hwndList, WM_SETREDRAW, FALSE, 0);
     
     for (auto* m : batch) {
         if (m->idx == -1) {
-            // Add new item
             LVITEM lv{ LVIF_TEXT | LVIF_PARAM };
             lv.iItem = ListView_GetItemCount(g_hwndList);
             lv.pszText = m->text; 
@@ -110,7 +107,6 @@ void ProcessBatchUpdates() {
             int pos = ListView_InsertItem(g_hwndList, &lv);
             ListView_SetItemText(g_hwndList, pos, 1, m->status);
         } else {
-            // Update existing item
             LVITEM lv{ LVIF_PARAM };
             lv.iItem = m->idx; 
             lv.lParam = (LPARAM)m->col;
@@ -120,10 +116,8 @@ void ProcessBatchUpdates() {
         delete m;
     }
     
-    // Re-enable redraw and update
     SendMessage(g_hwndList, WM_SETREDRAW, TRUE, 0);
     
-    // Only scroll to last updated item, not every item
     int count = ListView_GetItemCount(g_hwndList);
     if (count > 0) {
         ListView_EnsureVisible(g_hwndList, count - 1, FALSE);
@@ -212,6 +206,93 @@ void GlobalWorker(vector<Job>* jobs, atomic<size_t>* nextJob, bool verifyMode) {
     }
 }
 
+/* ===================== TEXT FORMAT I/O ===================== */
+bool SaveTextArca(const fs::path& arcaPath, const vector<Job>& jobList) {
+    ofstream out(arcaPath, ios::binary);
+    if (!out) return false;
+    
+    // Write UTF-8 BOM
+    out.write("\xEF\xBB\xBF", 3);
+    
+    out << "; ArcXSFV Hash File v1.0\n";
+    out << "; Generated: " << fs::path(arcaPath).filename().string() << "\n";
+    out << ";\n";
+    
+    for (auto& j : jobList) {
+        // Convert path to UTF-8
+        string utf8path = fs::path(j.relPath).u8string();
+        
+        // Write hash in hex format
+        char hashbuf[17];
+        snprintf(hashbuf, sizeof(hashbuf), "%016llx", j.resultHash);
+        out << hashbuf << " *" << utf8path << "\n";
+    }
+    
+    return out.good();
+}
+
+bool LoadTextArca(const fs::path& arcaPath, vector<Job>& jobList) {
+    ifstream in(arcaPath, ios::binary);
+    if (!in) return false;
+    
+    // Skip UTF-8 BOM if present
+    char bom[3];
+    in.read(bom, 3);
+    if (memcmp(bom, "\xEF\xBB\xBF", 3) != 0) {
+        in.seekg(0); // No BOM, rewind
+    }
+    
+    string line;
+    int idx = 0;
+    while (getline(in, line)) {
+        // Skip empty lines and comments
+        if (line.empty() || line[0] == ';') continue;
+        
+        // Remove any trailing \r from Windows line endings
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        
+        // Parse: hash *path
+        if (line.length() < 18 || line[16] != ' ' || line[17] != '*') continue;
+        
+        // Extract hash (first 16 hex chars)
+        uint64_t hash = 0;
+        bool validHash = true;
+        for (int i = 0; i < 16; i++) {
+            char c = line[i];
+            hash <<= 4;
+            if (c >= '0' && c <= '9') hash |= (c - '0');
+            else if (c >= 'a' && c <= 'f') hash |= (c - 'a' + 10);
+            else if (c >= 'A' && c <= 'F') hash |= (c - 'A' + 10);
+            else {
+                validHash = false;
+                break;
+            }
+        }
+        
+        if (!validHash) continue;
+        
+        // Extract path (after "* ")
+        string utf8path = line.substr(18);
+        if (utf8path.empty()) continue;
+        
+        Job j;
+        j.relPath = fs::u8path(utf8path).wstring();
+        j.path = arcaPath.parent_path() / fs::u8path(utf8path);
+        j.expectedHash = hash;
+        j.listIdx = idx++;
+        
+        if (fs::exists(j.path)) {
+            j.size = fs::file_size(j.path);
+        }
+        
+        jobList.push_back(j);
+    }
+    
+    return !jobList.empty();
+}
+
 /* ===================== ORCHESTRATOR ===================== */
 void LogicManager(vector<wstring> inputs, bool verifyMode) {
     g_processing = true;
@@ -223,49 +304,53 @@ void LogicManager(vector<wstring> inputs, bool verifyMode) {
     SetStatusSafe(L"Scanning...");
 
     vector<Job> jobList;
+    fs::path outputPath;
+    
     if (verifyMode) {
         fs::path arcaPath = inputs[0];
-        ifstream in(arcaPath, ios::binary);
-        char magic[4]; in.read(magic, 4);
-        if (memcmp(magic, "ARCA", 4) != 0) { 
-            SetStatusSafe(L"Error: Invalid File"); 
+        if (!LoadTextArca(arcaPath, jobList)) {
+            SetStatusSafe(L"Error: Invalid or corrupt .arca file"); 
             PostMessage(g_hwndMain, WM_DONE, 0, 0); 
-            return; 
-        }
-        uint32_t ver, count; in.read((char*)&ver, 4); in.read((char*)&count, 4);
-        for (uint32_t i = 0; i < count; i++) {
-            uint32_t l; in.read((char*)&l, 4);
-            string p(l, '\0'); in.read(&p[0], l);
-            uint64_t sz, h; in.read((char*)&sz, 8); in.read((char*)&h, 8);
-            Job j; j.path = arcaPath.parent_path() / fs::u8path(p);
-            j.expectedHash = h; j.listIdx = i; j.size = sz; j.relPath = fs::u8path(p).wstring();
-            jobList.push_back(j);
+            return;
         }
     } else {
-        int idx = 0;
         for (auto& p : inputs) {
             if (fs::is_directory(p)) {
                 for (auto& e : fs::recursive_directory_iterator(p)) {
                     if (e.is_regular_file()) {
-                        Job j; j.path = e.path(); j.listIdx = idx++;
+                        Job j; 
+                        j.path = e.path(); 
                         j.size = fs::file_size(e.path());
                         j.relPath = fs::relative(e.path(), fs::path(p).parent_path()).wstring();
                         jobList.push_back(j);
                     }
                 }
+                if (outputPath.empty()) {
+                    outputPath = fs::path(p) / "Hash.arca";
+                }
             } else {
-                Job j; j.path = p; j.listIdx = idx++;
+                Job j; 
+                j.path = p; 
                 j.size = fs::file_size(p);
                 j.relPath = fs::path(p).filename().wstring();
                 jobList.push_back(j);
+                
+                if (outputPath.empty()) {
+                    outputPath = fs::path(p).parent_path() / "Hash.arca";
+                }
             }
         }
     }
 
-    // Add all items to list in batches
-    for (auto& j : jobList) {
-        AddListItemSafe(j.relPath, L"Queued");
+    // Add all items to UI first, THEN assign list indices
+    for (size_t i = 0; i < jobList.size(); i++) {
+        AddListItemSafe(jobList[i].relPath, L"Queued");
+        jobList[i].listIdx = (int)i;  // Assign index AFTER adding to UI
     }
+    
+    // Wait for UI to process all additions before starting workers
+    PostMessage(g_hwndMain, WM_BATCH_LOG, 0, 0);
+    this_thread::sleep_for(chrono::milliseconds(100));
 
     atomic<size_t> nextJob(0);
     vector<thread> workers;
@@ -283,8 +368,6 @@ void LogicManager(vector<wstring> inputs, bool verifyMode) {
         
         SetStatusSafe(to_wstring(pct) + L"% | " + to_wstring((int)mbps) + L" MB/s");
         PostMessage(g_hwndMain, WM_PROGRESS, pct, 0);
-        
-        // Trigger batch processing
         PostMessage(g_hwndMain, WM_BATCH_LOG, 0, 0);
         
         this_thread::sleep_for(chrono::milliseconds(150));
@@ -292,22 +375,18 @@ void LogicManager(vector<wstring> inputs, bool verifyMode) {
 
     for (auto& t : workers) if (t.joinable()) t.join();
 
-    // Final batch update
     PostMessage(g_hwndMain, WM_BATCH_LOG, 0, 0);
 
     if (!verifyMode && !g_stopRequested) {
-        ofstream o("Hash.arca", ios::binary);
-        uint32_t v = 1, c = (uint32_t)jobList.size();
-        o.write("ARCA", 4); o.write((char*)&v, 4); o.write((char*)&c, 4);
-        for (auto& j : jobList) {
-            string u8 = fs::path(j.relPath).u8string();
-            uint32_t l = (uint32_t)u8.size();
-            o.write((char*)&l, 4); o.write(u8.data(), l);
-            o.write((char*)&j.size, 8); o.write((char*)&j.resultHash, 8);
+        if (SaveTextArca(outputPath, jobList)) {
+            SetStatusSafe(L"100% - Done | Saved: " + outputPath.filename().wstring());
+        } else {
+            SetStatusSafe(L"100% - Error saving .arca file");
         }
+    } else {
+        SetStatusSafe(g_stopRequested ? L"Stopped" : L"100% - Done");
     }
 
-    SetStatusSafe(g_stopRequested ? L"Stopped" : L"100% - Done");
     PostMessage(g_hwndMain, WM_DONE, 0, 0);
     g_processing = false;
 }
@@ -392,7 +471,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         EnableWindow(g_hwndCreate, 1); 
         EnableWindow(g_hwndVerify, 1); 
         EnableWindow(g_hwndStop, 0);
-        ProcessBatchUpdates(); // Final update
+        ProcessBatchUpdates();
         break;
         
     case WM_STAT: { 

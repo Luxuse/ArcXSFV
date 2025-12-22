@@ -76,7 +76,8 @@ pub const ArcaHash = struct {
         self.state = h;
     }
 
-    pub fn finalize(self: *ArcaHash) u64 {
+    pub fn finalize(self: *const ArcaHash) u64 {
+        // Don't modify - work on a copy of state
         var h = self.state;
         h ^= h >> 33;
         h = mix(h, P2);
@@ -96,8 +97,6 @@ export fn arca_init(ctx: *ArcaHash, seed: u64) void {
     ctx.* = ArcaHash.init(seed);
 }
 
-
-
 export fn arca_create(out: *ArcaHash, seed: u64) void {
     out.* = ArcaHash.init(seed);
 }
@@ -107,11 +106,10 @@ export fn arca_update(state: *ArcaHash, data: [*]const u8, len: usize) void {
 }
 
 export fn arca_finalize(state: *const ArcaHash) u64 {
-    var h = state.*;
-    return h.finalize();
+    // Simply call finalize without making a mutable copy
+    return state.finalize();
 }
 
 export fn arca_oneshot(data: [*]const u8, len: usize, seed: u64) u64 {
     return ArcaHash.hash(data[0..len], seed);
 }
-
