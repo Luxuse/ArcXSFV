@@ -21,6 +21,7 @@ Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une int
 - Multiplications **128 bits**
 - Chemin critique optimisé (*branchless*)
 - Débit mesuré : **~40.57 GB/s** (In ram)
+- Débit mesuré : **~2.6 GB/s** (In gen 3 nvme)
 
 ### Interface – C++ / Win32
 
