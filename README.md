@@ -29,6 +29,7 @@ Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une int
   - Vert : valide
   - Rouge : corrompu
   - Bleu : en cours
+  - - violet : missing
 
 
 
