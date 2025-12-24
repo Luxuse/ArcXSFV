@@ -1,6 +1,6 @@
-# ArcXSFV
+# ArcaXSFV
 
-**ArcXSFV** est un outil industriel de vérification d’intégrité de fichiers.  
+**ArcaXSFV** est un outil industriel de vérification d’intégrité de fichiers.  
 Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une interface multithreadée native (**C++ Win32**).
 
 ## Caractéristiques
@@ -20,17 +20,20 @@ Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une int
 - Accumulateurs doubles
 - Multiplications **128 bits**
 - Chemin critique optimisé (*branchless*)
-- Débit mesuré : **~40.58 GB/s** (ReleaseFast)
+- Débit mesuré : **~32 GB/s** (ReleaseFast)
 
 ### Interface – C++ / Win32
 
 - Drag & Drop fichiers / dossiers
+- Suivi temps réel (auto-scroll)
 - Indication d’état :
   - Vert : valide
   - Rouge : corrompu
   - Bleu : en cours
-  - - violet : missing
 
+## Build
 
+### Compilation du moteur (Zig)
 
-
+```bash
+zig build-lib arcahash.zig -O ReleaseFast

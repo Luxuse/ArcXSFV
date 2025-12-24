@@ -1,11 +1,7 @@
 1   zig build-obj arcahash.zig -O ReleaseSmall -target x86_64-windows-gnu
 
-$ g++ -Os -std=c++17 main.cpp arcahash.obj -o ArcXSFV.exe \
-    -mwindows \
-    -fno-exceptions -fno-rtti \
-    -ffunction-sections -fdata-sections \
-    -Wl,--gc-sections -Wl,-s \
-    -lcomctl32 -lole32 -static
+$ g++ -O3 -std=c++17 main.cpp arcahash.obj -o ArcXSFV.exe -mwindows -fno-exceptions -fno-rtti -ffunction-sections -fdata-sections -Wl,--gc-sections -Wl,-s -lcomctl32 -lole32 -static resource.res
+
 
 
 $ strip hash_gui.exe
