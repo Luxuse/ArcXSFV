@@ -20,7 +20,34 @@ Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une int
 - Accumulateurs doubles
 - Multiplications **128 bits**
 - Chemin critique optimisé (*branchless*)
-- Débit mesuré : **~40.2 GB/s** (ReleaseFast)
+- Débit mesuré ram:  
+Benchmark Suite
+Testing 128.0 MB
+ Hash:       0x3d59d742ce85b3fb
+ Iterations: 10
+
+ Avg Time:   2.844 ms
+ Min Time:   2.542 ms
+ Max Time:   3.239 ms
+
+ Avg Speed:  43.96 GB/s
+Peak Speed: 49.17 GB/s
+B/cycle:    10.49 @ 4.5GHz
+
+
+Testing 512.0 MB
+ Hash:       0xa76812a1f0b5604c
+ Iterations: 10
+
+ Avg Time:   11.449 ms
+ Min Time:   10.721 ms
+ Max Time:   12.228 ms
+
+ Avg Speed:  43.67 GB/s
+ Peak Speed: 46.64 GB/s
+ B/cycle:    10.42 @ 4.5GHz
+
+- Débit mesuré : **~2.6 GB/s** (In gen 3 nvme)
 
 ### Interface – C++ / Win32
 
@@ -31,9 +58,4 @@ Il associe un moteur de hachage haute performance (**ArcaHash**, Zig) à une int
   - Rouge : corrompu
   - Bleu : en cours
 
-## Build
 
-### Compilation du moteur (Zig)
-
-```bash
-zig build-lib arcahash.zig -O ReleaseFast

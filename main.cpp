@@ -167,7 +167,7 @@ bool SaveTextArca(const fs::path& arcaPath) {
     ofstream out(arcaPath, ios::binary);
     if (!out) return false;
     out.write("\xEF\xBB\xBF", 3);
-    out << "; ArcXSFV Hash File v1.0\n";
+    out << "; ArcXSFV Hash File v1.2\n";
     out << "; Generated: " << fs::path(arcaPath).filename().string() << "\n;\n";
     
     for (const auto& j : g_jobs) {
@@ -461,7 +461,7 @@ int WINAPI WinMain(HINSTANCE h, HINSTANCE, LPSTR, int n) {
     wc.hCursor = LoadCursor(NULL, IDC_ARROW); 
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     RegisterClassEx(&wc);
-    g_hwndMain = CreateWindow(L"ArcSFV", L"ArcXSFV V1", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 600, 480, 0, 0, h, 0);
+    g_hwndMain = CreateWindow(L"ArcSFV", L"ArcXSFV V1.2", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 600, 480, 0, 0, h, 0);
     ShowWindow(g_hwndMain, n);
     MSG m; 
     while (GetMessage(&m, 0, 0, 0)) { TranslateMessage(&m); DispatchMessage(&m); }
